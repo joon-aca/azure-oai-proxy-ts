@@ -83,6 +83,10 @@ sudo journalctl -u azure-oai-proxy -f
 curl http://localhost:11437/healthz
 # => {"status":"healthy"}
 
+# Stats
+curl http://localhost:11437/stats
+# => {"uptime":3600,"totalRequests":1234,"activeRequests":2,...}
+
 # List models
 curl http://localhost:11437/v1/models \
   -H "Authorization: Bearer YOUR_AZURE_API_KEY"
@@ -137,6 +141,7 @@ Serverless models are served from `https://{Name}.{Region}.models.ai.azure.com` 
 | Path | Method | Notes |
 |:---|:---|:---|
 | `/healthz` | GET | Health check |
+| `/stats` | GET | In-memory request metrics (counts, latency, token usage) |
 | `/v1/models` | GET | Lists deployed models + serverless deployments |
 | `/v1/chat/completions` | POST | Auto-routes to Responses API or Anthropic as needed |
 | `/v1/completions` | POST | |
@@ -160,6 +165,29 @@ Serverless models are served from `https://{Name}.{Region}.models.ai.azure.com` 
 | `/deployments` | GET | |
 | `/deployments/:id` | GET | |
 | `/v1/models/:id/capabilities` | GET | |
+
+## Stats Endpoint
+
+`GET /stats` returns a live JSON snapshot of proxy metrics since last restart. No auth required.
+
+```json
+{
+  "uptime": 3600,
+  "totalRequests": 1234,
+  "activeRequests": 2,
+  "byModel": {
+    "gpt-4o": { "requests": 800, "errors": 2, "avgLatencyMs": 750, "tokens": { "input": 80000, "output": 40000 } },
+    "claude-sonnet-4-6": { "requests": 200, "errors": 0, "avgLatencyMs": 1200, "tokens": { "input": 30000, "output": 15000 } }
+  },
+  "byStatus": { "200": 1225, "400": 5, "502": 2 },
+  "latency": { "avgMs": 920, "p50Ms": 800, "p95Ms": 2100, "p99Ms": 4500 },
+  "errors": { "total": 7 }
+}
+```
+
+- Latency percentiles are computed over a rolling window of the last 1000 requests.
+- Token usage is extracted from non-streaming JSON responses only (streaming responses don't buffer the body).
+- Stats reset on restart (in-memory only).
 
 ## Automatic API Routing
 
@@ -272,6 +300,7 @@ src/
 ├── index.ts              # Entry point: Bun.serve(), route registration
 ├── config.ts             # Env var loading, model mapper merge
 ├── router.ts             # Method + path pattern matching
+├── stats.ts              # In-memory metrics (requests, latency, tokens)
 ├── types.ts              # TypeScript interfaces
 ├── handlers/
 │   ├── azure.ts          # Core: detect → convert → fetch → respond

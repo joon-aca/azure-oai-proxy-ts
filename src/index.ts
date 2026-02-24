@@ -5,6 +5,7 @@ import { handleOptions } from "./handlers/cors";
 import { createModelsHandler } from "./handlers/models";
 import { createAzureHandler } from "./handlers/azure";
 import { createOpenAIHandler } from "./handlers/openai";
+import { stats } from "./stats";
 
 const config = loadConfig();
 const router = new Router();
@@ -13,8 +14,9 @@ if (config.proxyMode === "azure") {
   const azureHandler = createAzureHandler(config);
   const modelsHandler = createModelsHandler(config);
 
-  // Health
+  // Health & stats
   router.get("/healthz", () => handleHealth());
+  router.get("/stats", () => Response.json(stats.toJSON()));
 
   // Models
   router.get("/v1/models", modelsHandler);
@@ -65,6 +67,7 @@ if (config.proxyMode === "azure") {
   // OpenAI passthrough mode
   const openaiHandler = createOpenAIHandler(config);
   router.get("/healthz", () => handleHealth());
+  router.get("/stats", () => Response.json(stats.toJSON()));
   router.any(openaiHandler);
 }
 

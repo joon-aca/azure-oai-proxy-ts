@@ -2,6 +2,7 @@ import type { Config, ChatCompletionRequest } from "../types";
 import {
   isClaudeModel,
   shouldUseResponsesAPI,
+  isLegacyMaxTokensOnly,
   getModelFromBody,
   getModelFromPath,
 } from "../models/detection";
@@ -9,6 +10,7 @@ import { convertChatToResponses } from "../converters/chat-to-responses";
 import { convertChatToAnthropic } from "../converters/chat-to-anthropic";
 import { buildUpstreamTarget, resolveAuth } from "../proxy/director";
 import { processUpstreamResponse } from "../proxy/response";
+import { stats } from "../stats";
 
 export function createAzureHandler(config: Config) {
   return async (
@@ -82,6 +84,21 @@ export function createAzureHandler(config: Config) {
       effectivePath = "/v1/responses";
     }
 
+    // Translate max_tokens → max_completion_tokens for non-legacy models.
+    // Newer Azure models (gpt-4o+, gpt-5, o-series) require max_completion_tokens;
+    // only legacy models (gpt-3.5, gpt-4 turbo) still need max_tokens.
+    if (
+      bodyObj &&
+      upstreamBody === bodyBuffer &&
+      !isLegacyMaxTokensOnly(model) &&
+      "max_tokens" in bodyObj
+    ) {
+      const { max_tokens, ...rest } = bodyObj as ChatCompletionRequest & { max_tokens?: number };
+      console.log(`Translating max_tokens=${max_tokens} → max_completion_tokens`);
+      const translated = { ...rest, max_completion_tokens: max_tokens };
+      upstreamBody = JSON.stringify(translated);
+    }
+
     // Build upstream target
     const target = buildUpstreamTarget(effectivePath, query, model, config);
 
@@ -141,19 +158,51 @@ export function createAzureHandler(config: Config) {
     console.log(`Upstream: ${target.url}`);
     console.log(`=================================`);
 
+    const tracker = stats.startRequest(model);
+
     // Fetch upstream
-    const upstream = await fetch(target.url, {
-      method: req.method,
-      headers: upstreamHeaders,
-      body:
-        req.method === "GET" || req.method === "HEAD" ? undefined : upstreamBody,
-    });
+    let upstream: Response;
+    try {
+      upstream = await fetch(target.url, {
+        method: req.method,
+        headers: upstreamHeaders,
+        body:
+          req.method === "GET" || req.method === "HEAD" ? undefined : upstreamBody,
+      });
+    } catch (err) {
+      tracker.finish(502);
+      throw err;
+    }
 
     // Process response (convert formats if needed)
-    return processUpstreamResponse(upstream, {
+    const response = await processUpstreamResponse(upstream, {
       originalPath,
       upstreamUrl: target.url,
       model,
     });
+
+    // Extract token usage from non-streaming JSON responses
+    const respCT = response.headers.get("content-type") ?? "";
+    if (respCT.includes("application/json") && response.body) {
+      const cloned = response.clone();
+      try {
+        const body = await cloned.json() as Record<string, unknown>;
+        const usage = body.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined;
+        if (usage) {
+          tracker.finish(response.status, {
+            input: usage.prompt_tokens ?? 0,
+            output: usage.completion_tokens ?? 0,
+          });
+        } else {
+          tracker.finish(response.status);
+        }
+      } catch {
+        tracker.finish(response.status);
+      }
+    } else {
+      tracker.finish(response.status);
+    }
+
+    return response;
   };
 }
