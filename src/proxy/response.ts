@@ -23,11 +23,12 @@ export async function processUpstreamResponse(
   const contentType = upstream.headers.get("content-type") ?? "";
   const isSSE = contentType.includes("text/event-stream");
   const needsConversion = ctx.originalPath === "/v1/chat/completions";
+  const isAnthropic = ctx.upstreamUrl.includes("/anthropic/v1/messages");
+  const isResponses = ctx.upstreamUrl.includes("/openai/v1/responses");
+  const needsFormatConversion = needsConversion && (isAnthropic || isResponses);
 
-  // Streaming response that needs format conversion
-  if (isSSE && needsConversion && upstream.body) {
-    const isAnthropic = ctx.upstreamUrl.includes("/anthropic/v1/messages");
-
+  // Streaming response that needs format conversion (Anthropic/Responses → chat completions)
+  if (isSSE && needsFormatConversion && upstream.body) {
     const convertedStream = isAnthropic
       ? convertAnthropicStream(upstream.body, ctx.model)
       : convertResponsesStream(upstream.body, ctx.model);
@@ -44,24 +45,19 @@ export async function processUpstreamResponse(
   }
 
   // Non-streaming response that needs format conversion
-  if (needsConversion && upstream.status === 200) {
-    const isAnthropic = ctx.upstreamUrl.includes("/anthropic/v1/messages");
-    const isResponses = ctx.upstreamUrl.includes("/openai/v1/responses");
+  if (needsFormatConversion && upstream.status === 200) {
+    const data = (await upstream.json()) as Record<string, unknown>;
 
-    if (isAnthropic || isResponses) {
-      const data = (await upstream.json()) as Record<string, unknown>;
-
-      // Check for errors - pass through as-is
-      if (data.error) {
-        return Response.json(data, { status: upstream.status });
-      }
-
-      const chatResponse = isAnthropic
-        ? convertAnthropicToChatCompletion(data, ctx.model)
-        : convertResponsesToChatCompletion(data);
-
-      return Response.json(chatResponse);
+    // Check for errors - pass through as-is
+    if (data.error) {
+      return Response.json(data, { status: upstream.status });
     }
+
+    const chatResponse = isAnthropic
+      ? convertAnthropicToChatCompletion(data, ctx.model)
+      : convertResponsesToChatCompletion(data);
+
+    return Response.json(chatResponse);
   }
 
   // Error logging for non-2xx

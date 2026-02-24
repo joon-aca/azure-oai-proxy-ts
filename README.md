@@ -202,6 +202,9 @@ O-series (o1, o3, o4), Codex, GPT-5-Pro, computer-use-preview — converted from
 ### Anthropic Messages API (auto-detected)
 Claude models (opus, sonnet, haiku) — converted to Anthropic Messages format (`/anthropic/v1/messages`). System messages are extracted into the `system` parameter. Streaming and non-streaming responses are converted back to OpenAI format.
 
+### `max_tokens` → `max_completion_tokens` translation
+Newer Azure models (GPT-4o+, GPT-5, o-series) require `max_completion_tokens` and reject `max_tokens`. The proxy automatically rewrites the field when the model is not in the legacy set. Legacy models (exact `gpt-4`, `gpt-3.5-*`, `gpt-4-*` turbo variants) keep `max_tokens` unchanged.
+
 ## Usage Examples
 
 ### Standard Chat Completion

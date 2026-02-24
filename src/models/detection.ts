@@ -11,6 +11,17 @@ export function isClaudeModel(model: string): boolean {
   return claudePrefixes.some((p) => lower.startsWith(p));
 }
 
+// Legacy models that ONLY accept max_tokens (reject max_completion_tokens).
+// All newer models (gpt-4o+, gpt-5, o-series) accept max_completion_tokens.
+const legacyMaxTokensOnlyPrefixes = ["gpt-3.5", "gpt-4-"];
+
+// GPT-4 exact match (not gpt-4o, gpt-4o-mini, etc.) is also legacy
+export function isLegacyMaxTokensOnly(model: string): boolean {
+  const lower = model.toLowerCase();
+  if (lower === "gpt-4") return true;
+  return legacyMaxTokensOnlyPrefixes.some((p) => lower.startsWith(p));
+}
+
 const responsesModelPrefixes = [
   "o1",
   "o1-preview",
