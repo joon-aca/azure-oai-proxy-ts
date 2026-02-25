@@ -1,6 +1,7 @@
 import type { Config, ServerlessDeployment } from "../types";
 import { resolveModelDeployment } from "../models/mapper";
 import { buildServerlessUrl } from "../models/serverless";
+import { resolveChatApiVersion, resolveResponsesApiVersion } from "../models/api-versions";
 
 export interface UpstreamTarget {
   url: string;
@@ -54,7 +55,7 @@ function buildRegularTarget(
   const removeHeaders: string[] = [];
 
   let targetPath: string;
-  let apiVersion: string | null = config.apiVersion;
+  let apiVersion: string | null = resolveChatApiVersion(model, config.apiVersion);
 
   // Responses API endpoints
   if (path.includes("/v1/responses")) {
@@ -63,7 +64,7 @@ function buildRegularTarget(
     } else {
       targetPath = path.replace("/v1/", "/openai/v1/");
     }
-    apiVersion = config.responsesApiVersion;
+    apiVersion = resolveResponsesApiVersion(model, config.responsesApiVersion);
   } else if (path.startsWith("/v1/anthropic/messages")) {
     // Anthropic Messages API (Claude models)
     targetPath = "/anthropic/v1/messages";

@@ -1,0 +1,22 @@
+{
+  "chat": [
+    ["gpt-5.2",      "2025-04-01-preview"],
+    ["gpt-5.1",      "2025-04-01-preview"],
+    ["gpt-5-mini",   "2024-12-01-preview"],
+    ["gpt-5",        "2025-04-01-preview"],
+    ["gpt-4.1",      "2025-04-01-preview"],
+    ["gpt-4o-audio", "2025-01-01-preview"],
+    ["gpt-4o",       "2024-10-21"],
+    ["gpt-4-turbo",  "2024-05-01-preview"],
+    ["gpt-4",        "2024-02-01"],
+    ["gpt-3.5",      "2024-02-01"],
+    ["Kimi-K2.5",    "2025-01-01-preview"]
+  ],
+  "responses": [
+    ["o4",           "2025-04-01-preview"],
+    ["o3",           "2025-04-01-preview"],
+    ["codex",        "2025-04-01-preview"],
+    ["computer-use", "2025-04-01-preview"],
+    ["o1",           "2025-03-01-preview"]
+  ]
+}
