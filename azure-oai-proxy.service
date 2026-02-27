@@ -1,0 +1,17 @@
+[Unit]
+Description=Azure OpenAI Proxy (TypeScript/Bun)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/azure-oai-proxy-ts
+ExecStart=/home/ubuntu/.bun/bin/bun run src/index.ts
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

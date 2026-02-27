@@ -39,42 +39,21 @@ The proxy listens on `0.0.0.0:11437` by default.
 
 ### Run as a systemd Service
 
-To run the proxy as a persistent service that starts on boot:
+The repo includes `install.sh` and a pre-configured `azure-oai-proxy.service` unit file. To install and enable:
 
 ```sh
-# Create the service file (adjust paths if your bun or project are elsewhere)
-sudo tee /etc/systemd/system/azure-oai-proxy.service > /dev/null << 'EOF'
-[Unit]
-Description=Azure OpenAI Proxy (TypeScript/Bun)
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-Group=ubuntu
-WorkingDirectory=/opt/azure-oai-proxy-ts
-ExecStart=/home/ubuntu/.bun/bin/bun run src/index.ts
-Restart=on-failure
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Enable (start on boot) and start now
-sudo systemctl daemon-reload
-sudo systemctl enable azure-oai-proxy
+bun run install:service       # or: bash install.sh
 sudo systemctl start azure-oai-proxy
 ```
 
 Check status and logs:
 
 ```sh
-sudo systemctl status azure-oai-proxy
-sudo journalctl -u azure-oai-proxy -f
+systemctl status azure-oai-proxy
+journalctl -u azure-oai-proxy -f
 ```
+
+The unit file lives at `azure-oai-proxy.service` in the project root. Edit it there and re-run `install.sh` if you need to change the service definition (e.g. different user or bun path).
 
 ### Verify
 
@@ -116,6 +95,17 @@ All configuration is via environment variables (loaded from `.env` by Bun automa
 | `AZURE_AI_STUDIO_DEPLOYMENTS` | | Comma-separated `model=Name:Region` serverless entries |
 | `AZURE_OPENAI_KEY_*` | | Per-model serverless API keys (uppercase model name) |
 | `OPENAI_API_ENDPOINT` | `https://api.openai.com` | Upstream for `openai` proxy mode |
+
+### API Version Routing
+
+The proxy selects the Azure API version based on the route type. Each version is independently configurable:
+
+| Route type | Env var | Default | Applied as |
+|:---|:---|:---|:---|
+| Chat completions, embeddings, audio, images, files, fine-tunes | `AZURE_OPENAI_APIVERSION` | `2024-08-01-preview` | `?api-version=` query param |
+| `GET /v1/models` | `AZURE_OPENAI_MODELS_APIVERSION` | `2024-10-21` | `?api-version=` query param |
+| Responses API (`/v1/responses`, o-series auto-routed) | `AZURE_OPENAI_RESPONSES_APIVERSION` | `2024-08-01-preview` | `?api-version=` query param |
+| Anthropic/Claude (auto-routed via `/anthropic/v1/messages`) | `ANTHROPIC_APIVERSION` | `2023-06-01` | `anthropic-version` request header — no `api-version` param |
 
 ### Model Mapper
 
