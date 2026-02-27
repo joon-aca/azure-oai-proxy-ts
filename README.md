@@ -12,6 +12,7 @@ A lightweight, zero-dependency proxy server that translates OpenAI-format API re
 - **Streaming** — SSE format conversion via Web Streams API (Responses API and Anthropic to OpenAI `chat.completion.chunk`)
 - **180+ Model Mappings** — Comprehensive failsafe map from OpenAI model names to Azure deployment names
 - **Serverless Deployments** — Azure AI Studio serverless endpoints with per-model auth
+- **Per-Model API Versioning** — Editable JSON lookup table maps model prefixes to the correct Azure `api-version`
 - **Zero Dependencies** — Bun provides HTTP server, fetch, streaming, and .env loading natively
 - **OpenAI Passthrough** — Optional mode to proxy directly to OpenAI API
 
@@ -87,9 +88,9 @@ All configuration is via environment variables (loaded from `.env` by Bun automa
 | `AZURE_OPENAI_API_KEY` | | Default API key (used when no key in request headers) |
 | `AZURE_OPENAI_PROXY_ADDRESS` | `0.0.0.0:11437` | Listen address |
 | `AZURE_OPENAI_PROXY_MODE` | `azure` | `azure` or `openai` (passthrough) |
-| `AZURE_OPENAI_APIVERSION` | `2024-08-01-preview` | API version for general operations |
+| `AZURE_OPENAI_APIVERSION` | `2024-08-01-preview` | Fallback API version for chat/completions (used when model isn't in `api-versions.json`) |
 | `AZURE_OPENAI_MODELS_APIVERSION` | `2024-10-21` | API version for `/v1/models` |
-| `AZURE_OPENAI_RESPONSES_APIVERSION` | `2024-08-01-preview` | API version for Responses API |
+| `AZURE_OPENAI_RESPONSES_APIVERSION` | `2024-08-01-preview` | Fallback API version for Responses API (used when model isn't in `api-versions.json`) |
 | `ANTHROPIC_APIVERSION` | `2023-06-01` | Anthropic API version for Claude |
 | `AZURE_OPENAI_MODEL_MAPPER` | | Comma-separated `model=deployment` overrides |
 | `AZURE_AI_STUDIO_DEPLOYMENTS` | | Comma-separated `model=Name:Region` serverless entries |
@@ -98,14 +99,44 @@ All configuration is via environment variables (loaded from `.env` by Bun automa
 
 ### API Version Routing
 
-The proxy selects the Azure API version based on the route type. Each version is independently configurable:
+The proxy resolves the Azure `api-version` per-model using the lookup table in [`api-versions.json`](api-versions.json). The table uses case-insensitive prefix matching — e.g. a request for `gpt-4o-2024-11-20` matches the `gpt-4o` row. If no prefix matches, the env var fallback is used.
 
-| Route type | Env var | Default | Applied as |
-|:---|:---|:---|:---|
-| Chat completions, embeddings, audio, images, files, fine-tunes | `AZURE_OPENAI_APIVERSION` | `2024-08-01-preview` | `?api-version=` query param |
-| `GET /v1/models` | `AZURE_OPENAI_MODELS_APIVERSION` | `2024-10-21` | `?api-version=` query param |
-| Responses API (`/v1/responses`, o-series auto-routed) | `AZURE_OPENAI_RESPONSES_APIVERSION` | `2024-08-01-preview` | `?api-version=` query param |
-| Anthropic/Claude (auto-routed via `/anthropic/v1/messages`) | `ANTHROPIC_APIVERSION` | `2023-06-01` | `anthropic-version` request header — no `api-version` param |
+**Chat completions** (`/v1/chat/completions`, embeddings, audio, images, etc.):
+
+| Model prefix | API version |
+|:---|:---|
+| `gpt-5.2` | `2025-04-01-preview` |
+| `gpt-5.1` | `2025-04-01-preview` |
+| `gpt-5-mini` | `2024-12-01-preview` |
+| `gpt-5` | `2025-04-01-preview` |
+| `gpt-4.1` | `2025-04-01-preview` |
+| `gpt-4o-audio` | `2025-01-01-preview` |
+| `gpt-4o` | `2024-10-21` |
+| `gpt-4-turbo` | `2024-05-01-preview` |
+| `gpt-4` | `2024-02-01` |
+| `gpt-3.5` | `2024-02-01` |
+| `Kimi-K2.5` | `2025-01-01-preview` |
+| *(no match)* | `AZURE_OPENAI_APIVERSION` fallback |
+
+**Responses API** (`/v1/responses`, o-series auto-routed):
+
+| Model prefix | API version |
+|:---|:---|
+| `o4` | `2025-04-01-preview` |
+| `o3` | `2025-04-01-preview` |
+| `codex` | `2025-04-01-preview` |
+| `computer-use` | `2025-04-01-preview` |
+| `o1` | `2025-03-01-preview` |
+| *(no match)* | `AZURE_OPENAI_RESPONSES_APIVERSION` fallback |
+
+**Other routes:**
+
+| Route | Version source |
+|:---|:---|
+| `GET /v1/models` | `AZURE_OPENAI_MODELS_APIVERSION` (default `2024-10-21`) |
+| Anthropic/Claude | `ANTHROPIC_APIVERSION` (default `2023-06-01`) sent as `anthropic-version` header — no `api-version` param |
+
+To change a version, edit `api-versions.json` and restart the proxy. No code changes needed.
 
 ### Model Mapper
 
@@ -275,6 +306,8 @@ Client Request (OpenAI format)
   │   ├─ Serverless: Bearer token
   │   └─ Anthropic: Bearer token + anthropic-version
   │
+  ├─ API Version Resolution (from api-versions.json, prefix match → fallback)
+  │
   ├─ URL Rewriting
   │   ├─ Regular: /openai/deployments/{name}/...?api-version=...
   │   ├─ Responses: /openai/v1/responses?api-version=...
@@ -289,34 +322,38 @@ Client Request (OpenAI format)
 ## Project Structure
 
 ```
+api-versions.json            # Per-model API version lookup table (edit to change versions)
+azure-oai-proxy.service      # systemd unit file
+install.sh                   # Installs and enables the systemd service
 src/
-├── index.ts              # Entry point: Bun.serve(), route registration
-├── config.ts             # Env var loading, model mapper merge
-├── router.ts             # Method + path pattern matching
-├── stats.ts              # In-memory metrics (requests, latency, tokens)
-├── types.ts              # TypeScript interfaces
+├── index.ts                 # Entry point: Bun.serve(), route registration
+├── config.ts                # Env var loading, model mapper merge
+├── router.ts                # Method + path pattern matching
+├── stats.ts                 # In-memory metrics (requests, latency, tokens)
+├── types.ts                 # TypeScript interfaces
 ├── handlers/
-│   ├── azure.ts          # Core: detect → convert → fetch → respond
-│   ├── openai.ts         # Passthrough proxy to OpenAI
-│   ├── models.ts         # GET /v1/models
-│   ├── health.ts         # GET /healthz
-│   └── cors.ts           # OPTIONS preflight
+│   ├── azure.ts             # Core: detect → convert → fetch → respond
+│   ├── openai.ts            # Passthrough proxy to OpenAI
+│   ├── models.ts            # GET /v1/models
+│   ├── health.ts            # GET /healthz
+│   └── cors.ts              # OPTIONS preflight
 ├── proxy/
-│   ├── director.ts       # URL rewriting + auth headers
-│   └── response.ts       # Response conversion dispatch
+│   ├── director.ts          # URL rewriting + auth headers + api-version resolution
+│   └── response.ts          # Response conversion dispatch
 ├── converters/
 │   ├── chat-to-responses.ts
 │   ├── chat-to-anthropic.ts
 │   ├── responses-to-chat.ts
 │   └── anthropic-to-chat.ts
 ├── streaming/
-│   ├── sse-parser.ts     # Async generator SSE parser
+│   ├── sse-parser.ts        # Async generator SSE parser
 │   ├── responses-stream.ts
 │   └── anthropic-stream.ts
 └── models/
-    ├── mapper.ts         # 180+ model→deployment map
-    ├── detection.ts      # isClaudeModel(), shouldUseResponsesAPI()
-    └── serverless.ts     # Serverless URL builder
+    ├── api-versions.ts      # Per-model api-version resolution from api-versions.json
+    ├── mapper.ts            # 180+ model→deployment map
+    ├── detection.ts         # isClaudeModel(), shouldUseResponsesAPI()
+    └── serverless.ts        # Serverless URL builder
 ```
 
 ## Networking & Deployment
