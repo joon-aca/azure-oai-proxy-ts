@@ -228,6 +228,14 @@ export function createAzureHandler(config: Config) {
       model,
     });
 
+    // Log the request body that triggered an error for diagnostics
+    if (response.status >= 400 && upstreamBody) {
+      const reqStr = typeof upstreamBody === "string"
+        ? upstreamBody
+        : new TextDecoder().decode(upstreamBody);
+      console.error(`>>> Rejected request body: ${reqStr}`);
+    }
+
     // Extract token usage from non-streaming JSON responses
     const respCT = response.headers.get("content-type") ?? "";
     if (respCT.includes("application/json") && response.body) {
