@@ -93,6 +93,7 @@ All configuration is via environment variables (loaded from `.env` by Bun automa
 | `AZURE_OPENAI_RESPONSES_APIVERSION` | `2024-08-01-preview` | Fallback API version for Responses API (used when model isn't in `api-versions.json`) |
 | `ANTHROPIC_APIVERSION` | `2023-06-01` | Anthropic API version for Claude |
 | `AZURE_OPENAI_MODEL_MAPPER` | | Comma-separated `model=deployment` overrides |
+| `AZURE_OPENAI_ENDPOINT_MAP` | | Comma-separated `model=endpoint:key` per-model endpoint overrides |
 | `AZURE_AI_STUDIO_DEPLOYMENTS` | | Comma-separated `model=Name:Region` serverless entries |
 | `AZURE_OPENAI_KEY_*` | | Per-model serverless API keys (uppercase model name) |
 | `OPENAI_API_ENDPOINT` | `https://api.openai.com` | Upstream for `openai` proxy mode |
@@ -156,6 +157,16 @@ AZURE_OPENAI_KEY_MISTRAL-LARGE-2407=your-serverless-key
 ```
 
 Serverless models are served from `https://{Name}.{Region}.models.ai.azure.com` with Bearer token auth.
+
+### Per-Model Endpoint Overrides
+
+Route specific models to a different Azure OpenAI resource (e.g. a model deployed on a separate Azure AI resource):
+
+```sh
+AZURE_OPENAI_ENDPOINT_MAP=kimi-k2.5=https://my-other-resource.services.ai.azure.com/
+```
+
+The format is `model=endpoint:key` where `:key` is optional. Without a key, the default auth (from the request headers or `AZURE_OPENAI_API_KEY`) is used. Multiple entries are comma-separated.
 
 ## Supported APIs
 

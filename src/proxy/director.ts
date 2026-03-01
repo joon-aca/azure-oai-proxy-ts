@@ -49,7 +49,9 @@ function buildRegularTarget(
   model: string,
   config: Config,
 ): UpstreamTarget {
-  const endpoint = config.azureEndpoint.replace(/\/$/, "");
+  const modelLower = model.toLowerCase();
+  const endpointOverride = config.endpointMap[modelLower];
+  const endpoint = (endpointOverride?.endpoint ?? config.azureEndpoint).replace(/\/$/, "");
   const deployment = resolveModelDeployment(model, config.modelMapper);
   const headers: Record<string, string> = {};
   const removeHeaders: string[] = [];
@@ -123,6 +125,15 @@ export function resolveAuth(
     return {
       set: { Authorization: `Bearer ${serverless.key}` },
       remove: ["api-key"],
+    };
+  }
+
+  // Check for per-model endpoint override with its own key
+  const endpointOverride = config.endpointMap[modelLower];
+  if (endpointOverride?.key) {
+    return {
+      set: { "api-key": endpointOverride.key },
+      remove: ["authorization"],
     };
   }
 

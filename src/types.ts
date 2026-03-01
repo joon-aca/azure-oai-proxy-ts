@@ -4,6 +4,11 @@ export interface ServerlessDeployment {
   key: string;
 }
 
+export interface EndpointOverride {
+  endpoint: string;
+  key?: string;
+}
+
 export interface Config {
   azureEndpoint: string;
   apiVersion: string;
@@ -15,6 +20,7 @@ export interface Config {
   openaiEndpoint: string;
   modelMapper: Record<string, string>;
   serverlessDeployments: Record<string, ServerlessDeployment>;
+  endpointMap: Record<string, EndpointOverride>;
   apiKey: string;
 }
 

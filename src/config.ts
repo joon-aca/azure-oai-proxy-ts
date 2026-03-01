@@ -1,4 +1,4 @@
-import type { Config, ServerlessDeployment } from "./types";
+import type { Config, EndpointOverride, ServerlessDeployment } from "./types";
 import { defaultModelMapper } from "./models/mapper";
 
 function parseModelMapper(env: string | undefined): Record<string, string> {
@@ -33,6 +33,37 @@ function parseServerlessDeployments(
   return deployments;
 }
 
+function parseEndpointMap(
+  env: string | undefined,
+): Record<string, EndpointOverride> {
+  const map: Record<string, EndpointOverride> = {};
+  if (!env) return map;
+  for (const pair of env.split(",")) {
+    const eqIdx = pair.indexOf("=");
+    if (eqIdx === -1) continue;
+    const model = pair.slice(0, eqIdx).trim();
+    const rest = pair.slice(eqIdx + 1).trim();
+    if (!model || !rest) continue;
+    // Try parsing the whole value as a URL first. If valid, it's just an endpoint
+    // (handles URLs with ports like https://host:8443/path).
+    // If invalid, split on the last colon to separate endpoint from key.
+    try {
+      new URL(rest);
+      map[model.toLowerCase()] = { endpoint: rest };
+    } catch {
+      const lastColon = rest.lastIndexOf(":");
+      if (lastColon === -1) {
+        map[model.toLowerCase()] = { endpoint: rest };
+        continue;
+      }
+      const endpoint = rest.slice(0, lastColon).trim();
+      const key = rest.slice(lastColon + 1).trim();
+      map[model.toLowerCase()] = { endpoint, key: key || undefined };
+    }
+  }
+  return map;
+}
+
 export function loadConfig(): Config {
   const userMapper = parseModelMapper(
     process.env.AZURE_OPENAI_MODEL_MAPPER,
@@ -59,6 +90,7 @@ export function loadConfig(): Config {
     serverlessDeployments: parseServerlessDeployments(
       process.env.AZURE_AI_STUDIO_DEPLOYMENTS,
     ),
+    endpointMap: parseEndpointMap(process.env.AZURE_OPENAI_ENDPOINT_MAP),
     apiKey: process.env.AZURE_OPENAI_API_KEY ?? "",
   };
 
@@ -71,6 +103,10 @@ export function loadConfig(): Config {
   console.log(
     `Serverless deployments: ${JSON.stringify(Object.keys(config.serverlessDeployments))}`,
   );
+  const endpointMapKeys = Object.keys(config.endpointMap);
+  if (endpointMapKeys.length > 0) {
+    console.log(`Endpoint overrides: ${JSON.stringify(endpointMapKeys)}`);
+  }
 
   return config;
 }
