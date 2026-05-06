@@ -1,4 +1,6 @@
 export const defaultModelMapper: Record<string, string> = {
+  // GPT-5.4 series
+  "gpt-5.4-mini": "gpt-5.4-mini",
   // GPT-5.2 series
   "gpt-5.2": "gpt-5.2",
   "gpt-5.2-2025-12-11": "gpt-5.2-2025-12-11",

@@ -238,12 +238,13 @@ export function createAzureHandler(config: Config) {
 
     // Extract token usage from non-streaming JSON responses
     const respCT = response.headers.get("content-type") ?? "";
+    const isErrorResp = response.status >= 400;
     if (respCT.includes("application/json") && response.body) {
       const cloned = response.clone();
       try {
         const body = await cloned.json() as Record<string, unknown>;
-        if (DEBUG) {
-          console.log(`<<< Response (${response.status}): ${JSON.stringify(body)}`);
+        if (isErrorResp || DEBUG) {
+          console.log(`<<< Response (${response.status}) [${model}]: ${JSON.stringify(body)}`);
         }
         const usage = body.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined;
         if (usage) {
@@ -255,12 +256,15 @@ export function createAzureHandler(config: Config) {
           tracker.finish(response.status);
         }
       } catch {
+        if (isErrorResp) {
+          console.log(`<<< Response (${response.status}) [${model}] [json parse failed]`);
+        }
         tracker.finish(response.status);
       }
     } else {
-      if (DEBUG) {
+      if (isErrorResp || DEBUG) {
         const isStream = respCT.includes("text/event-stream");
-        console.log(`<<< Response (${response.status}): ${isStream ? "[SSE stream]" : `[${respCT}]`}`);
+        console.log(`<<< Response (${response.status}) [${model}] ${isStream ? "[SSE stream]" : `[${respCT}]`}`);
       }
       tracker.finish(response.status);
     }
